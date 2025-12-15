@@ -18,28 +18,101 @@
         html.push('</ul>');
         return html.join('');
     };
+    // 根据权重选择奖品的函数
+    var selectPrizeByWeight = function(availablePrizes) {
+        // 计算总权重
+        var totalWeight = 0;
+        var prizesByType = {};
+
+        // 按奖品类型分组并统计可用数量
+        availablePrizes.forEach(function(prize) {
+            var type = prize.prizeType || 'PARTICIPATION';
+            if (!prizesByType[type]) {
+                prizesByType[type] = {
+                    prizes: [],
+                    probability: prize.probability || 0.20
+                };
+            }
+            prizesByType[type].prizes.push(prize);
+        });
+
+        // 计算每个类型的实际权重（基于剩余数量）
+        var weightedTypes = [];
+        for (var type in prizesByType) {
+            if (prizesByType[type].prizes.length > 0) {
+                weightedTypes.push({
+                    type: type,
+                    weight: prizesByType[type].probability,
+                    prizes: prizesByType[type].prizes
+                });
+                totalWeight += prizesByType[type].probability;
+            }
+        }
+
+        // 如果没有可用奖品，返回null
+        if (weightedTypes.length === 0 || totalWeight === 0) {
+            return null;
+        }
+
+        // 使用轮盘赌算法选择奖品类型
+        var random = Math.random() * totalWeight;
+        var currentWeight = 0;
+
+        for (var i = 0; i < weightedTypes.length; i++) {
+            currentWeight += weightedTypes[i].weight;
+            if (random <= currentWeight) {
+                // 从该类型中随机选择一个奖品
+                var prizes = weightedTypes[i].prizes;
+                var randomIndex = Math.floor(Math.random() * prizes.length);
+                return prizes[randomIndex];
+            }
+        }
+
+        // 如果由于浮点数精度问题没有选中，返回最后一个类型的随机奖品
+        var lastType = weightedTypes[weightedTypes.length - 1];
+        var lastPrizes = lastType.prizes;
+        return lastPrizes[Math.floor(Math.random() * lastPrizes.length)];
+    };
+
     var lottery = function(count){
         var list = canvas.getElementsByTagName('a');
         var color = 'yellow';
-        var ret = member
-            .filter(function(m, index){
-                m.index = index;
-                return !choosed[getKey(m)];
-            })
-            .map(function(m){
-                return Object.assign({
-                    score: Math.random()
-                }, m);
-            })
-            .sort(function(a, b){
-                return a.score - b.score;
-            })
-            .slice(0, count)
-            .map(function(m){
-                choosed[getKey(m)] = 1;
-                list[m.index].style.color = color;
-                return m;
+
+        // 获取未被选中的奖品
+        var availablePrizes = member.filter(function(m, index){
+            m.index = index;
+            return !choosed[getKey(m)];
+        });
+
+        // 如果没有足够的奖品
+        if (availablePrizes.length === 0) {
+            return [];
+        }
+
+        var ret = [];
+        var actualCount = Math.min(count, availablePrizes.length);
+
+        // 根据权重选择指定数量的奖品
+        for (var i = 0; i < actualCount; i++) {
+            // 重新获取可用奖品列表（因为已经选中的要排除）
+            var currentAvailable = availablePrizes.filter(function(prize) {
+                return !ret.some(function(selected) {
+                    return getKey(selected) === getKey(prize);
+                });
             });
+
+            if (currentAvailable.length === 0) {
+                break;
+            }
+
+            var selectedPrize = selectPrizeByWeight(currentAvailable);
+            if (selectedPrize) {
+                ret.push(selectedPrize);
+                choosed[getKey(selectedPrize)] = 1;
+                list[selectedPrize.index].style.color = color;
+            }
+        }
+
         localStorage.setItem('choosed', JSON.stringify(choosed));
         return ret;
     };
